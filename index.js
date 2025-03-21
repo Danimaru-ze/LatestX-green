@@ -3,13 +3,14 @@ import moment from "moment";
 import simpleGit from "simple-git";
 import chalk from "chalk";
 import boxen from "boxen";
+import { execSync } from "child_process";
 
 const path = "./data.json";
 const git = simpleGit();
 
-// Konfigurasi untuk 2022 dan 2023
-const years = [2022, 2023];
-const minCommitsPerDay = 5; // Minimal commit per hari
+// Tahun target
+const year = 2023;
+const commitsPerDay = 5;
 
 const displayUI = (message, type = "info") => {
   const colors = {
@@ -18,97 +19,87 @@ const displayUI = (message, type = "info") => {
     warning: "yellow",
     error: "red",
   };
-  const boxenOptions = {
-    padding: 1,
-    margin: 1,
-    borderStyle: "round",
-    borderColor: colors[type],
-    backgroundColor: "#555555",
-  };
   
-  console.log(boxen(chalk[colors[type]](message), boxenOptions));
+  console.log(chalk[colors[type]](message));
 };
 
-const makeCommit = async (date, commitNumber) => {
-  const formattedDate = date.format("YYYY-MM-DDTHH:mm:ss");
-  
-  const data = {
-    date: formattedDate,
-    commit: {
-      message: `Commit #${commitNumber} on ${formattedDate}`,
-      author: "danysetiyawan50@gmail.com",
-      branch: "main",
-    },
-  };
-  
-  await jsonfile.writeFile(path, data);
-  await git.add([path]);
-  await git.commit(`Commit #${commitNumber} on ${formattedDate}`, { "--date": formattedDate });
-  return formattedDate;
-};
-
-const makeCommitsForDay = async (date, day) => {
-  const commitsToday = minCommitsPerDay;
-  displayUI(`📅 Day ${day}: Creating ${commitsToday} commits for ${date.format("YYYY-MM-DD")}`, "info");
-  
-  for (let j = 1; j <= commitsToday; j++) {
-    // Acak jam dan menit
-    const hours = Math.floor(Math.random() * 24);
-    const minutes = Math.floor(Math.random() * 60);
+// Fungsi untuk memastikan commit dengan tanggal tertentu
+const makeCommitWithExactDate = async (date, index) => {
+  try {
+    // Format tanggal untuk Git
+    const formattedDate = date.format("YYYY-MM-DD HH:mm:ss");
     
-    const commitDate = date.clone().hour(hours).minute(minutes);
-    const formattedDate = await makeCommit(commitDate, j);
+    // Perbarui data.json
+    const data = {
+      date: formattedDate,
+      index: index,
+      message: `Commit for ${formattedDate}`,
+    };
     
-    displayUI(`✅ Created commit ${j}/${commitsToday} for ${date.format("YYYY-MM-DD")} at ${formattedDate}`, "success");
+    await jsonfile.writeFileSync(path, data);
+    
+    // Gunakan execSync untuk memastikan environment variable GIT_COMMITTER_DATE
+    execSync(`git add ${path} && GIT_COMMITTER_DATE="${formattedDate}" GIT_AUTHOR_DATE="${formattedDate}" git commit -m "Commit ${index} for ${formattedDate}" --date "${formattedDate}"`, {
+      stdio: 'inherit'
+    });
+    
+    displayUI(`✓ Created commit for ${formattedDate}`, "success");
+    return true;
+  } catch (error) {
+    displayUI(`Error creating commit: ${error.message}`, "error");
+    return false;
   }
 };
 
-const fillYearWithCommits = async (year) => {
-  try {
-    const startDate = moment(`${year}-01-01`);
-    const endDate = moment(`${year}-12-31`);
+const fillYear = async () => {
+  displayUI(`Starting to fill ${year} with commits...`, "info");
+  
+  // Iterasi untuk setiap hari dalam tahun
+  const startDate = moment(`${year}-01-01`);
+  const endDate = moment(`${year}-12-31`);
+  let currentDate = startDate.clone();
+  let commitCount = 0;
+  
+  while (currentDate <= endDate) {
+    displayUI(`Processing day: ${currentDate.format("YYYY-MM-DD")}`, "info");
     
-    displayUI(`🚀 Starting to fill ${year} with commits...`, "info");
-    
-    let currentDate = moment(startDate);
-    let day = 1;
-    
-    // Iterate through each day of the year
-    while (currentDate <= endDate) {
-      await makeCommitsForDay(currentDate, day);
-      currentDate = moment(currentDate).add(1, "days");
-      day++;
+    // Buat beberapa commit untuk hari ini
+    for (let i = 1; i <= commitsPerDay; i++) {
+      // Acak jam dan menit
+      const hour = Math.floor(Math.random() * 24);
+      const minute = Math.floor(Math.random() * 60);
       
-      // Push setiap 7 hari untuk menghindari terlalu banyak commit sebelum push
-      if (day % 7 === 0) {
-        displayUI("🔄 Pushing commits to GitHub...", "info");
-        await git.push();
-        displayUI("✅ Commits pushed successfully!", "success");
+      const commitDate = currentDate.clone().hour(hour).minute(minute);
+      await makeCommitWithExactDate(commitDate, ++commitCount);
+      
+      // Sedikit jeda antara commit
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // Push setiap 7 hari untuk memastikan
+    if (currentDate.day() === 0) {
+      try {
+        displayUI("Pushing commits to GitHub...", "info");
+        await git.push('origin', 'main', ['--force']);
+        displayUI("Commits pushed successfully!", "success");
+      } catch (error) {
+        displayUI(`Error pushing commits: ${error.message}`, "error");
       }
     }
     
-    // Final push untuk sisa commit
-    displayUI(`🔄 Pushing final commits for ${year} to GitHub...`, "info");
-    await git.push();
-    displayUI(`🎉 All commits for ${year} have been pushed to GitHub!`, "success");
+    // Pindah ke hari berikutnya
+    currentDate.add(1, 'day');
+  }
+  
+  // Final push
+  try {
+    displayUI("Pushing final commits to GitHub...", "info");
+    await git.push('origin', 'main', ['--force']);
+    displayUI(`All commits for ${year} have been pushed!`, "success");
   } catch (error) {
-    displayUI(`❌ Error processing ${year}: ${error.message}`, "error");
+    displayUI(`Error in final push: ${error.message}`, "error");
   }
 };
 
-const fillAllYears = async () => {
-  for (const year of years) {
-    await fillYearWithCommits(year);
-  }
-  displayUI("🎊 All years have been filled with commits! Your contribution graph should be full green soon.", "success");
-};
-
-// Tampilkan UI Awal
-displayUI(
-  "🚀 Starting the full green GitHub contribution process for years 2022-2023...\n" +
-    chalk.yellow("This will create commits for every day of 2022 and 2023"),
-  "info"
-);
-
-// Jalankan proses
-fillAllYears();
+// Mulai proses
+fillYear();
