@@ -1,11 +1,15 @@
 import jsonfile from "jsonfile";
 import moment from "moment";
 import simpleGit from "simple-git";
-import random from "random";
 import chalk from "chalk";
 import boxen from "boxen";
 
 const path = "./data.json";
+const git = simpleGit();
+
+// Konfigurasi untuk 2022 dan 2023
+const years = [2022, 2023];
+const minCommitsPerDay = 5; // Minimal commit per hari
 
 const displayUI = (message, type = "info") => {
   const colors = {
@@ -14,7 +18,6 @@ const displayUI = (message, type = "info") => {
     warning: "yellow",
     error: "red",
   };
-
   const boxenOptions = {
     padding: 1,
     margin: 1,
@@ -26,60 +29,86 @@ const displayUI = (message, type = "info") => {
   console.log(boxen(chalk[colors[type]](message), boxenOptions));
 };
 
-const markCommit = (x, y) => {
-  const date = moment()
-    .subtract(1, "y")
-    .add(1, "d")
-    .add(x, "w")
-    .add(y, "d")
-    .format();
-
+const makeCommit = async (date, commitNumber) => {
+  const formattedDate = date.format("YYYY-MM-DDTHH:mm:ss");
+  
   const data = {
-    date: date,
+    date: formattedDate,
     commit: {
-      message: `Commit on ${date}`,
-      author: "latesturltech@gmail.com",
+      message: `Commit #${commitNumber} on ${formattedDate}`,
+      author: "danysetiyawan50@gmail.com",
       branch: "main",
     },
   };
-
-  jsonfile.writeFile(path, data, () => {
-    simpleGit().add([path]).commit(date, { "--date": date }).push();
-    displayUI(`📑 Commit created on: ${date}`, "success");
-  });
+  
+  await jsonfile.writeFile(path, data);
+  await git.add([path]);
+  await git.commit(`Commit #${commitNumber} on ${formattedDate}`, { "--date": formattedDate });
+  return formattedDate;
 };
 
-const makeCommits = (n) => {
-  if (n === 0) {
-    displayUI("🎉 All commits have been created and pushed!", "success");
-    return simpleGit().push();
+const makeCommitsForDay = async (date, day) => {
+  const commitsToday = minCommitsPerDay;
+  displayUI(`📅 Day ${day}: Creating ${commitsToday} commits for ${date.format("YYYY-MM-DD")}`, "info");
+  
+  for (let j = 1; j <= commitsToday; j++) {
+    // Acak jam dan menit
+    const hours = Math.floor(Math.random() * 24);
+    const minutes = Math.floor(Math.random() * 60);
+    
+    const commitDate = date.clone().hour(hours).minute(minutes);
+    const formattedDate = await makeCommit(commitDate, j);
+    
+    displayUI(`✅ Created commit ${j}/${commitsToday} for ${date.format("YYYY-MM-DD")} at ${formattedDate}`, "success");
   }
-
-  const x = random.int(0, 54);
-  const y = random.int(0, 6);
-  const date = moment().subtract(1, "y").add(1, "d").add(x, "w").add(y, "d").format();
-
-  const data = {
-    date: date,
-    commit: {
-      message: `Commit #${n} on ${date}`,
-      author: "latesturltech@gmail.com",
-      branch: "main",
-    },
-  };
-
-  displayUI(`✨ Creating commit #${n} on: ${date}`, "info");
-  jsonfile.writeFile(path, data, () => {
-    simpleGit().add([path]).commit(date, { "--date": date }, makeCommits.bind(this, --n));
-  });
 };
 
+const fillYearWithCommits = async (year) => {
+  try {
+    const startDate = moment(`${year}-01-01`);
+    const endDate = moment(`${year}-12-31`);
+    
+    displayUI(`🚀 Starting to fill ${year} with commits...`, "info");
+    
+    let currentDate = moment(startDate);
+    let day = 1;
+    
+    // Iterate through each day of the year
+    while (currentDate <= endDate) {
+      await makeCommitsForDay(currentDate, day);
+      currentDate = moment(currentDate).add(1, "days");
+      day++;
+      
+      // Push setiap 7 hari untuk menghindari terlalu banyak commit sebelum push
+      if (day % 7 === 0) {
+        displayUI("🔄 Pushing commits to GitHub...", "info");
+        await git.push();
+        displayUI("✅ Commits pushed successfully!", "success");
+      }
+    }
+    
+    // Final push untuk sisa commit
+    displayUI(`🔄 Pushing final commits for ${year} to GitHub...`, "info");
+    await git.push();
+    displayUI(`🎉 All commits for ${year} have been pushed to GitHub!`, "success");
+  } catch (error) {
+    displayUI(`❌ Error processing ${year}: ${error.message}`, "error");
+  }
+};
+
+const fillAllYears = async () => {
+  for (const year of years) {
+    await fillYearWithCommits(year);
+  }
+  displayUI("🎊 All years have been filled with commits! Your contribution graph should be full green soon.", "success");
+};
+
+// Tampilkan UI Awal
 displayUI(
-  "🚀 Starting the automated commit process...\n" +
-    chalk.yellow("Project: LatestX-green\n") +
-    chalk.yellow("Version: 1.0.0"),
+  "🚀 Starting the full green GitHub contribution process for years 2022-2023...\n" +
+    chalk.yellow("This will create commits for every day of 2022 and 2023"),
   "info"
 );
 
-//============ { CUSTOM COMMITS } ============\\
-makeCommits(100);
+// Jalankan proses
+fillAllYears();
