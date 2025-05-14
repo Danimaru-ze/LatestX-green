@@ -9,7 +9,7 @@ const git = simpleGit();
 
 // Fokus ke tahun 2024 saja
 const startDate = moment("2023-01-01");
-const endDate = moment("2025-03-22");
+const endDate = moment("2025-05-14");
 const minCommitsPerDay = 10; // Minimal commit per hari
 
 const displayUI = (message, type = "info") => {
